@@ -1,0 +1,346 @@
+---
+title: "ECON 491 Final Project"
+author: "Srikur Kanuparthy and Payal Rathore"
+date: "2023-04-27"
+output: html_document
+---
+
+```{r, include=FALSE}
+library(tidyverse)
+library(viridis)
+library(hrbrthemes)
+library(ggplot2)
+library(dplyr)
+library(gridExtra)
+library(glmnet)
+library(leaps)
+data = read.csv("C:/Users/skanu/Documents/usa_01.csv")
+data$SAMPLE = data$SAMPLE %/% 100
+data_tib = as_tibble(data)
+```
+
+## Introduction, Project Question, and Data
+
+The question that we plan to study with our project is whether a wage gap exists between Asian
+men and women in the United States and what the main determinants of such a gap are. We plan on studying if there is indeed a wage gap and what factors shrink or inflate it, including location, immigration status, and education level.
+
+As per a report published by the US Bureau of Labor Statistics based off of 2017 data, the largest income disparities between women and men were amongst Asians and Whites. Asian women specifically earned 75 percent as much as Asian men in 2017, and White women earned 82 percent as much as White men.
+Hence, the research question is of great importance in terms of determining which factors disproportionately affect the Asian population, specifically Asian women who seem to be adversely affected in this case.
+
+Another compelling reason for pursuing this research question is the fact that the Asian population often gets overlooked regarding issues of income inequality and disparity. This may be due to the general perception of Asians earning higher overall incomes, which is supported by the above-mentioned report which had relevant statistics displaying that Asian men and women earned more than their counterparts belonging to other races.
+
+We believe that machine learning can be incredibly helpful in researching this question as it would allow us to determine the extent to which different demographic features affect the outcome that we are studying, since there are multiple socio- economic factors involved. Hence, we aim to use the data extracted to build models with the end goal of predicting income based on the various demographic variables included in the study. We will build multiple models, ranging from simple multiple linear regression to deep learning, to compare the performances of the models and assess their inference abilities. We plan on studying if there is indeed a wage gap and what factors shrink or inflate it, including location, immigration status, and education level. The end goal of predicting income based on the various demographic variables included in the study. We will build multiple models, ranging from simple multiple linear regression to deep learning, to compare the performances of the models and assess their inference abilities.
+
+The data that we use for this project comes from IPUMS' USA Survey Data. We extracted data from the IPUMS website for the years 2000-2021 using American Community Survey microdata. The data is available at https://ipums.org.
+
+
+## Literature Review
+
+This topic has been of interest for multiple researchers working in the fields of economics and other related social sciences. Though there are multiple studies that have focused on wage gaps, fewer articles have focused on racial disparities and their causation within sub groups of the same. Despite the limited work specializing on this aspect, previous findings have suggested that both Latino and Asian women were highly likely to end up in the lowest paying jobs offered in the labor market (McCall, 2001). This study that analyzed data from the American Community Survey over 2013 to 2018 found that the gender wage gap among Asian men and women varied significantly based on the place of birth and citizenship status (Mortega, 2021).
+
+Fluency with English has also been a prominent factor resulting in wage gaps. As per this study published by the census bureau, English speaking workers earned around $5,600 more than those who spoke a different language. Furthermore, those who were very fluent reported earnings higher by $7,000 than those who had a medium proficiency in English (Day  & Shin, 2005).  The results obtained showed that Asian women born in the US made 89 cents for every dollar an Asian man born in the US made, compared to a foreign-born, non-citizen woman who only made 72 cents compared to their respective counterparts. 
+
+Another paper that focused on the incomes of academic scientists and engineers found that Asian women have the lowest percentage of tenured faculty and full professors in academia, and the lowest percentage of managers in the government and industry compared to scientists and engineers of all gender and races/ethnicities (Tao, 2018). This may be considered as another factor contributing to these disparities as the paper mentioned that Asian American women earned less due to the high income of their male counterparts in 2013. The technology sector appears to be a recurring theme in other research papers as well, one of which stated that high-tech service economies were responsible for around 9.6% of the variation in women’s salaries as per their findings (McCall, 2001).
+
+Many other social issues such as regressive gender norms have also been credited as the source of such disparities. Deeply rooted cultural systems have resulted in women contributing most of their time and efforts towards housework and looking after the family, leaving little time for earning an income. Should they choose to work, they are restricted to lower paying jobs that are flexible enough to accommodate their other responsibilities, thereby increasing this gap (Mortega, 2021). Discrimination at the workplace is also another factor that must be taken into consideration, as it has had an overall impact on women across all races, specifically women of color.
+
+
+## Preliminary Graphs
+
+First, we explore the data a little, showing that ACS data indeed displays wage gaps between Asian men and Asian women across several metrics. First, we show that the overall Asian wage gap can be seen across the 21st century so far, with the nominal gap seemingly larger now than at the start of the century.
+
+```{r prelim graphs, echo=FALSE, warning=FALSE, results='hide', fig.keep='all'}
+as_tibble(data) |> 
+  group_by(SAMPLE, SEX) |>
+  summarise(wage = median(INCWAGE, na.rm = TRUE), .groups = "keep") |>
+  ggplot(aes(x = SAMPLE, y = wage, group = as.factor(SEX), color = as.factor(SEX))) + 
+    geom_line() + 
+    labs(title = "Median Wage 2000-2021", x = "Year", y = "Median Wage", color = "Sex") +
+    scale_color_manual(labels = c("Male", "Female"), values = c("blue", "red"))
+```
+
+```{r, echo=FALSE, warning=FALSE, results='hide', fig.keep='all'}
+four_largest = data_tib |> 
+  filter(RACED == 400
+         | RACED == 500
+         | RACED == 600
+         | RACED == 610
+         & EMPSTAT == 1) |>
+  group_by(RACED, SAMPLE, SEX) |>
+  summarise(wage = median(INCWAGE, na.rm = TRUE))
+
+p1 = ggplot(data = four_largest[four_largest$RACED == 400,], aes(x = SAMPLE, y = wage, group = as.factor(SEX), color = as.factor(SEX))) + 
+  geom_line() + 
+  theme_minimal() +
+  labs(title = "Median Wage for Chinese Americans", x = "Year", y = "Median Wage", color = "Sex") +
+  scale_color_manual(labels = c("Male", "Female"), values = c("blue", "red"))
+
+p2 = ggplot(data = four_largest[four_largest$RACED == 500,], aes(x = SAMPLE, y = wage, group = as.factor(SEX), color = as.factor(SEX))) + 
+  geom_line() + 
+  theme_minimal() + 
+  labs(title = "Median Wage for Japanese Americans", x = "Year", y = "Median Wage", color = "Sex") +
+  scale_color_manual(labels = c("Male", "Female"), values = c("blue", "red"))
+
+p3 = ggplot(data = four_largest[four_largest$RACED == 600,], aes(x = SAMPLE, y = wage, group = as.factor(SEX), color = as.factor(SEX))) + 
+  geom_line() + 
+  theme_minimal() + 
+  labs(title = "Median Wage for Filipino Americans", x = "Year", y = "Median Wage", color = "Sex") +
+  scale_color_manual(labels = c("Male", "Female"), values = c("blue", "red"))
+
+p4 = ggplot(data = four_largest[four_largest$RACED == 610,], aes(x = SAMPLE, y = wage, group = as.factor(SEX), color = as.factor(SEX))) + 
+  geom_line() + 
+  theme_minimal() + 
+  labs(title = "Median Wage for Indian Americans", x = "Year", y = "Median Wage", color = "Sex") +
+  scale_color_manual(labels = c("Male", "Female"), values = c("blue", "red"))
+grid.arrange(p1,  p2, p3, p4, nrow = 2)
+```
+
+Now, we can dissect the data into the four largest Asian ethnicities in America: Chinese Americans, Japanese Americans, Indian Americans, and Filipino Americans. As we can see from the graphs, of the four major groups, Japanese Americans have the largest male-female wage gap.
+
+```{r education-wage-gap, echo=FALSE, warning=FALSE, results='hide', fig.keep='all'}
+# Wage Gap By Education
+data_tib |>
+  filter(EDUCD %in% c(062, 101, 114, 115, 116)) |>
+  filter(EMPSTAT == 1) |>
+  group_by(EDUCD, SEX) |>
+  summarise(wage = median(INCWAGE, na.rm = TRUE), .groups = "keep") |>
+  ggplot(aes(x = as.factor(EDUCD), y = wage, fill = as.factor(SEX))) + 
+    geom_bar(stat = "identity", position = position_dodge()) + 
+    labs(title = "Median Wage by Sex and Education", x = "Educational Attainment", y = "Median Wage", color = "Sex") +
+    scale_fill_manual(name = "SEX", labels = c("Male", "Female"), values = c("#F8766D", "#619CFF")) + 
+    scale_x_discrete(labels=c('High School', 'Bachelors', 'Masters', 'Professional', 'Doctorate')) + 
+    theme_minimal()
+```
+
+Next we show the median wage gap by educational attainment. This graph is consistent with general intuition, that higher education leads to higher wages and that the male-female wage gap persists through all levels of education. An interesting observation is that the wage gap is lower for lower levels of educational attainment.
+
+```{r english-wage-gap, echo=FALSE, warning=FALSE, results='hide', fig.keep='all'}
+# Wage Gap by English Skill Level
+data_tib |>
+  filter(SPEAKENG %in% c(1,2,3,4,5,6)) |>
+  filter(EMPSTAT == 1) |>
+  group_by(SPEAKENG, SEX) |>
+  summarise(wage = median(INCWAGE, na.rm = TRUE), .groups = "keep") |>
+  ggplot(aes(x=reorder(as.factor(SPEAKENG),as.factor(SPEAKENG),
+                     length), y = wage, fill = as.factor(SEX))) + 
+    geom_bar(stat = "identity", position = position_dodge()) + 
+    labs(title = "Median Wage by English Skill Level", x = "English Skill", y = "Median Wage", color = "Sex") +
+    scale_fill_manual(name = "SEX", labels = c("Male", "Female"), values = c("#F8766D", "#619CFF")) + 
+    scale_x_discrete(labels=c('No English', 'Only English', 'Yes, very well', 'Yes, well', 'Yes, not well')) + 
+    theme_minimal()
+```
+
+Lastly, we show the median wage gap by varying degrees of English skill level. Similarly to education, lower skill level shows a smaller wage gap than higher skill levels. These interesting observations make rough intuitive sense but require a more thoroughly analysis as to their causes.
+
+
+
+## Classification Algorithms and Methodology
+
+Since level wage differences across year have changed drastically over the 22 year period that we are analyzing due to inflation, we decided to adjust the income levels for all the data using the CPI measure.
+
+```{r cpi-adjust, warning=FALSE}
+# Adjust for CPI
+# Asian working men data
+men_data = data_tib |> 
+  filter(EMPSTAT == 1 & SEX == 1 & CITIZEN %in% c(1,2,3,4,5)) |>
+  select(INCWAGE, RACE, EDUCD, DEGFIELD, MARST) |>
+  drop_na()
+
+# Asian working women data
+women_data = data_tib |>
+  filter(EMPSTAT == 1 & SEX == 2 & CITIZEN %in% c(1,2,3,4,5)) |>
+  select(INCWAGE, RACE, EDUCD, DEGFIELD, MARST) |>
+  drop_na()
+```
+
+The data we extracted from the IPUMS database contains 47 features, many of which are unlikely to be relevant predictors for income. Of those 47, we use the `Sex`, `Education Level`, `Citzenship`, `Asian Ethnicity`, `Marital Status`, and `Field of Degree`. Since we will be analyzing both males and females separately, we do not use `Sex` as a predictor for either group. The three classes of predictors that we use are regular Multiple Regression, Subset Selection, and Shrinkage Methods. For each sex, we use leave-one-out cross-validation to determine the optimal parameters whenever applicable. For Shrinkage Methods, we test both Lasso and Ridge Regression. We withhold 20 percent of each data set as a test set. Throughout our methodology, we set a seed of `1` in order to make our results reproducible.
+
+First, we analyze Asian American men to decipher the primary determinants that factor into their incomes:
+
+### Multiple Linear Regression
+
+```{r men lm, warning=FALSE}
+set.seed(1)
+split = sample(c(TRUE,FALSE), nrow(men_data), rep=TRUE)
+
+train = men_data[split,]
+train$INCWAGE = train$INCWAGE / 1000
+test = men_data[-split,]
+test$INCWAGE = test$INCWAGE / 1000
+
+lm.model.men = lm(INCWAGE ~ as.factor(EDUCD) + as.factor(RACE) + 
+                as.factor(DEGFIELD) + as.factor(MARST), data = train)
+
+# Test Error Rate
+lm.preds = data.frame(predict(lm.model.men, newdata = test))
+print(paste0("Test Error: ", sum((lm.preds - test[,1])^2)/nrow(test)))
+```
+
+### Ridge Regression
+
+```{r men ridge, warning=FALSE}
+# Ridge Regression
+set.seed(1)
+split = sample(c(TRUE,FALSE), nrow(men_data), rep=TRUE)
+
+train = men_data[split,]
+test = men_data[-split,]
+
+grid = 10^seq(10, -2, length = 100)
+
+train = model.matrix(~.-1, data = train)
+test = model.matrix(~., data = test)[,-1]
+
+ridge.model <- glmnet(train, train[,1], alpha = 0, lambda = grid)
+plot(ridge.model, xvar="lambda", label=TRUE)
+
+## CV
+set.seed(1)
+cv.out = cv.glmnet(train, train[,1], alpha = 0)
+plot(cv.out)
+bestlam = cv.out$lambda.min
+
+ridge.pred = predict(ridge.model, s = bestlam,
+    newx = test)
+print(paste0("Test Error: ", mean((ridge.pred - test[,1])^2)))
+```
+
+### Lasso Regression
+
+```{r men lasso, warning=FALSE}
+# Lasso Regression
+set.seed(1)
+split = sample(c(TRUE,FALSE), nrow(men_data), rep=TRUE)
+
+train = men_data[split,]
+test = men_data[-split,]
+
+grid = 10^seq(10, -2, length = 100)
+
+train = model.matrix(~.-1, data = train)
+test = model.matrix(~., data = test)[,-1]
+
+lasso.model <- glmnet(train, train[,1], alpha = 1, lambda = grid)
+plot(lasso.model, xvar="lambda", label=TRUE)
+
+## CV
+set.seed(1)
+cv.out = cv.glmnet(train, train[,1], alpha = 1)
+plot(cv.out)
+bestlam = cv.out$lambda.min
+
+lasso.pred = predict(lasso.model, s = bestlam,
+    newx = test)
+print(paste0("Test Error: ", mean((lasso.pred - test[,1])^2)))
+```
+
+Looking at the test error rates for all three models, the multiple regression model seems to have the best prediction performance.
+
+Now we turn to Asian women:
+
+### Multiple Linear Regression
+
+```{r women lm, warning=FALSE}
+set.seed(1)
+split = sample(c(TRUE,FALSE), nrow(women_data), rep=TRUE)
+
+train = women_data[split,]
+train$INCWAGE = train$INCWAGE / 1000
+test = women_data[-split,]
+test$INCWAGE = test$INCWAGE / 1000
+
+lm.model.women = lm(INCWAGE ~ as.factor(EDUCD) + as.factor(RACE) + 
+                as.factor(DEGFIELD) + as.factor(MARST), data = train)
+
+# Test Error Rate
+lm.preds = data.frame(predict(lm.model.women, newdata = test))
+print(paste0("Test Error: ", sum((lm.preds - test[,1])^2)/nrow(test)))
+```
+
+### Ridge Regression
+
+```{r women ridge, warning=FALSE}
+# Ridge Regression
+set.seed(1)
+split = sample(c(TRUE,FALSE), nrow(women_data), rep=TRUE)
+
+train = women_data[split,]
+test = women_data[-split,]
+
+grid = 10^seq(10, -2, length = 100)
+
+train = model.matrix(~.-1, data = train)
+test = model.matrix(~., data = test)[,-1]
+
+ridge.model <- glmnet(train, train[,1], alpha = 0, lambda = grid)
+plot(ridge.model, xvar="lambda", label=TRUE)
+
+## CV
+set.seed(1)
+cv.out = cv.glmnet(train, train[,1], alpha = 0)
+plot(cv.out)
+bestlam = cv.out$lambda.min
+
+ridge.pred = predict(ridge.model, s = bestlam,
+    newx = test)
+print(paste0("Test Error: ", mean((ridge.pred - test[,1])^2)))
+```
+
+### Lasso Regression
+
+```{r women lasso, warning=FALSE}
+# Lasso Regression
+set.seed(1)
+split = sample(c(TRUE,FALSE), nrow(women_data), rep=TRUE)
+
+train = women_data[split,]
+test = women_data[-split,]
+
+grid = 10^seq(10, -2, length = 100)
+
+train = model.matrix(~.-1, data = train)
+test = model.matrix(~., data = test)[,-1]
+
+lasso.model <- glmnet(train, train[,1], alpha = 1, lambda = grid)
+plot(lasso.model, xvar="lambda", label=TRUE)
+
+## CV
+set.seed(1)
+cv.out = cv.glmnet(train, train[,1], alpha = 1)
+plot(cv.out)
+bestlam = cv.out$lambda.min
+
+lasso.pred = predict(lasso.model, s = bestlam,
+    newx = test)
+print(paste0("Test Error: ", mean((lasso.pred - test[,1])^2)))
+```
+
+The test error results once again show that regular multiple linear regression is the best predictor for Asian women's income in America.
+
+```{r results}
+summary(lm.model.men)
+summary(lm.model.women)
+```
+
+Looking at the summaries of the linear models, we can see that both models have pretty low $R^2$ values, indicating that the independent variables that we chose to analyze are not explaining much of the variation in wages for both Asian men and Asian women. The model for Asian men has an $R^2$ value of 0.2279 while the model for Asian women has an $R^2$ value of 0.2001.
+
+## Conclusion
+
+In this project, we have shown that while there exists a wage gap between Asian men and Asian women in the United States, neither income level is well explained by the seemingly most obvious factors.
+
+## References
+
+Steven Ruggles, Sarah Flood, Matthew Sobek, Danika Brockman, Grace Cooper,  Stephanie Richards, and Megan Schouweiler. IPUMS USA: Version 13.0 [dataset]. Minneapolis, MN: IPUMS, 2023. https://doi.org/10.18128/D010.V13.0
+
+Day , J., &amp; Shin, H. B. (2005). How does ability to speak English affect earnings? - census.gov. Retrieved April 28, 2023, from https://www.census.gov/content/dam/Census/library/working-papers/2005/demo/2005-Day-Shin.pdf
+
+McCall, L. (2001). Sources of racial wage inequality in metropolitan labor markets: Racial, ethnic, and gender differences. American Sociological Review, 66(4), 520. https://doi.org/10.2307/3088921
+
+Pak Mortega, J. (2021). Examining the Asian gender pay gap in the United States: A Kitagawa-Blinder-Oaxaca decomposition. Scholarly Publishing Services - UW Libraries. Retrieved April 27, 2023, from https://digital.lib.washington.edu/researchworks/handle/1773/47703
+
+Tao, Y. (2018). Earnings of academic scientists and engineers: Intersectionality of gender and Race/ethnicity effects. American Behavioral Scientist, 62(5), 625–644. https://doi.org/10.1177/0002764218768870
+
+U.S. Bureau of Labor Statistics. (2016). Asian women and men earned more than their white, black, and Hispanic counterparts in 2017. U.S. Bureau of Labor Statistics. Retrieved April 27, 2023, from https://www.bls.gov/opub/ted/2018/asian-women-and-men-earned-more-than-their-white-black-and-hispanic-counterparts-in-2017.htm
+
+Workplace justice the wage gap and Asian women - nwlc.org. (2017). Retrieved April 28, 2023, from https://nwlc.org/wp-content/uploads/2017/03/Asian-Women-Equal-Pay-2.pdf
+
